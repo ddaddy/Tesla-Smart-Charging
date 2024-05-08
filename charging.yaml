@@ -1,0 +1,423 @@
+
+#
+# [Switch] enable/disable smart charging
+#
+input_boolean:
+  smart_charge:
+    name: "[Tesla] Smart Charge"
+    initial: on
+    icon: mdi:battery-charging-60
+
+#
+# [Timer] Delay stopping charge
+#
+# When an automation calls to turn the charger off, we delay it by 2 minutes.
+# This stops the charger's relay from clicking on and off constantly if the available power is bouncing around
+# as the timer is cancelled when power becomes available again within the 2 minutes.
+#
+timer:
+  turn_off_car_charger:
+    name: "[Tesla Smart Charge] Timer to turn off car charger in 2 minutes"
+    duration: "00:02:02"
+    icon: mdi:timer-sand
+
+#
+# [Automation] Triggered when the timer to turn off the charger ends.
+#
+automation turn_off_car_charger_automation:
+  id: "8379465214871"
+  alias: "[Tesla Smart Charge] Turning off car charger"
+  description: ''
+  mode: single
+  trigger:
+  - platform: event
+    event_type: timer.finished
+    event_data:
+      entity_id: timer.turn_off_car_charger
+  action:
+    - service: switch.turn_off
+      target:
+        entity_id: switch.jess_charger
+      data: {}
+
+#
+# [Automation] Turn charger off immediately after plugging in
+#
+automation charging_off_when_plugged_in:
+  id: "6485463543436"
+  alias: "[Tesla Smart Charge] Turn car charger off after being plugged in"
+  description: ""
+  mode: single
+  trigger:
+    - platform: state
+      entity_id: binary_sensor.jess_charger
+      to: "on"
+      from: "off"
+  condition:
+    # Car must be at home
+    - condition: state
+      entity_id: device_tracker.jess_location_tracker
+      state: home
+  action:
+    - service: timer.start
+      target:
+        entity_id: timer.turn_off_car_charger
+      data:
+        duration: "00:01:00"
+
+
+
+
+#
+# Smart Charging
+#
+automation charging:
+  id: "8379465214376"
+  alias: "[Tesla Smart Charge] Charge on solar power"
+  description: ""
+  mode: single
+  trace:
+    stored_traces: 30
+  trigger:
+    - platform: state
+      entity_id: sensor.power_in_or_out_reversed
+  condition:
+    # Wait at least 10 seconds
+    - condition: template
+      value_template: >
+        {{ now() - this.attributes.last_triggered > timedelta(seconds=10) }}
+    # Smart charge must be enabled
+    - condition: state
+      entity_id: input_boolean.smart_charge
+      state: "on"
+    # Car must be plugged in
+    - condition: state
+      entity_id: binary_sensor.jess_charger
+      state: "on"
+    # Car must be at home
+    - condition: state
+      entity_id: device_tracker.jess_location_tracker
+      state: home
+  action:
+    # Setup some variables
+    - variables:
+        min_charging_amps: 1
+        minimum_start_amps: 2
+        max_charging_amps: "{{ state_attr('number.jess_charging_amps', 'max') | int }}"
+        current_charging_amps: "{{ states('number.jess_charging_amps') | int }}"
+        spare_energy: "{{ states('sensor.power_in_or_out_reversed') | float }}"
+        grid_voltage: "{{ 240 | float * 3 }}"
+        spare_amps: "{{ (spare_energy / grid_voltage) | round(0, 'floor') | int }}"
+        new_charge_amps: "{{ (current_charging_amps + spare_amps) | int }}"
+        charge_limit: "{{ states('number.jess_charge_limit') | int }}"
+        battery_level: "{{ states('sensor.jess_battery') | int }}"
+    - choose:
+        - conditions:
+            # 
+            # Condition: Car is not currently charging and we have enough spare amps
+            #            Car is also under the max charge level
+            #
+            - condition: template
+              value_template: "{{ spare_amps >= minimum_start_amps }}"
+            - condition: state
+              entity_id: switch.jess_charger
+              state: 'off'
+            - condition: template
+              value_template: "{{ charge_limit > battery_level }}"
+          sequence:
+            #
+            # Do:
+            #   Log to Logbook
+            #   Cancel any 'charger turn off' timer, but only if it is running
+            #   Set number of amps to use
+            #   Turn car charger on
+            #
+            - service: logbook.log
+              data:
+                name: "[Tesla Smart Charge]"
+                message: "Charger is off and we have {{ spare_amps }} spare amps. Attempting to start charge"
+            # Check that the timer is running, otherwise it will trigger a finish
+            - choose:
+              - conditions:
+                  - condition: state
+                    entity_id: timer.turn_off_car_charger
+                    state: active
+                sequence:
+                  - service: timer.cancel
+                    target:
+                      entity_id: timer.turn_off_car_charger
+            - service: number.set_value
+              target:
+                entity_id: number.jess_charging_amps
+              data:
+                value: "{{ spare_amps }}"
+            - service: switch.turn_on
+              target:
+                entity_id: switch.jess_charger
+        - conditions:
+            #
+            # Condition: Car is charging, we have spare energy and we aren't at the maximum charge amps yet
+            #
+            - condition: state
+              entity_id: switch.jess_charger
+              state: 'on'
+            - condition: template
+              value_template: "{{ spare_amps > 0 }}"
+            - condition: template
+              value_template: "{{ current_charging_amps < max_charging_amps }}"
+            # - condition: template
+            #   value_template: "{{ 1 < 0 }}" ##### TODO: REMOVE
+          sequence:
+            #
+            # Do:
+            #   Log to Logbook
+            #   Cancel any 'charger turn off' timer, but only if it is running
+            #   Set the new charge amps
+            #
+            - service: logbook.log
+              data:
+                name: "[Tesla Smart Charge]"
+                message: "Charger is on and we have {{ spare_amps }} spare amps. Already at {{ current_charging_amps }} amps. Attempting to increase charge rate to {{ (current_charging_amps + spare_amps) | int }} amps"
+            # Check that the timer is running, otherwise it will trigger a finish
+            - choose:
+              - conditions:
+                  - condition: state
+                    entity_id: timer.turn_off_car_charger
+                    state: active
+                sequence:
+                  - service: timer.cancel
+                    target:
+                      entity_id: timer.turn_off_car_charger
+            - service: number.set_value
+              target:
+                entity_id: number.jess_charging_amps
+              data:
+                value: "{{ [max_charging_amps, new_charge_amps] | min }}"
+        - conditions:
+            #
+            # Condition: Car is charging and we don't even have enough juice to charge at min_charging_amps
+            #
+            - condition: state
+              entity_id: switch.jess_charger
+              state: 'on'
+            - condition: template
+              value_template: "{{ new_charge_amps < min_charging_amps }}"
+          sequence:
+            #
+            # Do:
+            #   Log to Logbook
+            #   Reduce amps to 1
+            #   Run timer that delays for 2 minutes then turns off the charger, but only if it isn't already running
+            #
+            - service: logbook.log
+              data:
+                name: "[Tesla Smart Charge]"
+                message: "Charger is on and we don't have enough juice to even charge at {{ min_charging_amps }}A. Turning off charger in 2 minutes. (new_charge:{{ new_charge_amps }}A < min_charging:{{ min_charging_amps }}A) (current_charging:{{ current_charging_amps }}A + spare:{{ spare_amps }}A) (power out:{{ spare_energy }})"
+            - service: number.set_value
+              target:
+                entity_id: number.jess_charging_amps
+              data:
+                value: "{{ min_charging_amps }}"
+            # Check that the timer isn't already running, otherwise it will restart
+            - choose:
+              - conditions:
+                  - condition: or
+                    conditions:
+                      - condition: state
+                        entity_id: timer.turn_off_car_charger
+                        state: idle
+                      - condition: state
+                        entity_id: timer.turn_off_car_charger
+                        state: paused
+                sequence:
+                  - service: timer.start
+                    target:
+                      entity_id: timer.turn_off_car_charger
+                    data:
+                      duration: "00:02:02"
+        - conditions:
+            #
+            # Condition: Car is charging and we are using too much energy
+            #
+            - condition: state
+              entity_id: switch.jess_charger
+              state: 'on'
+            - condition: template
+              value_template: "{{ spare_amps < 0 }}"
+          sequence:
+            #
+            # Do:
+            #   Log to Logbook
+            #   Cancel any 'charger turn off' timer, but only if it is running
+            #   Reduce the number of amps
+            #
+            - service: logbook.log
+              data:
+                name: "[Tesla Smart Charge]"
+                message: "Charger is on and we are using {{ spare_amps }} too many amps. Attempting to decrease charge rate to:{{ [min_charging_amps, new_charge_amps] | max }}"
+            - choose:
+              - conditions:
+                  - condition: state
+                    entity_id: timer.turn_off_car_charger
+                    state: active
+                sequence:
+                  - service: timer.cancel
+                    target:
+                      entity_id: timer.turn_off_car_charger
+            - service: number.set_value
+              target:
+                entity_id: number.jess_charging_amps
+              data:
+                # spare_amps will be negative
+                value: "{{ [min_charging_amps, new_charge_amps] | max }}"
+      default:
+        #
+        # Do:
+        #   Log to Logbook
+        #
+        # - service: logbook.log
+        #   data:
+        #     name: "[Tesla Smart Charge]"
+        #     message: "We have nothing to do. Charger is {{ states.switch.jess_charger.state }} - current_charging_amps:{{ current_charging_amps }} - spare_energy:{{ spare_energy }} - spare_amps:{{ spare_amps }} - minimum_start_amps:{{ minimum_start_amps }}"
+
+#
+# Turn Off at Sunset
+#
+automation stop_charging:
+  id: "8379365214876"
+  alias: "[Tesla Smart Charge] Turn charger off at sunset"
+  description: "If smart charging is enabled, charging will be switched off at sunset"
+  mode: single
+  trigger:
+    # Perform at sunset
+    - platform: sun
+      event: sunset
+  condition:
+    # Smart charge must be enabled
+    - condition: state
+      entity_id: input_boolean.smart_charge
+      state: "on"
+    # Car must be plugged in
+    - condition: state
+      entity_id: binary_sensor.jess_charger
+      state: "on"
+    # Car must be at home
+    - condition: state
+      entity_id: device_tracker.jess_location_tracker
+      state: home
+  action:
+    - service: logbook.log
+      data:
+        name: "[Tesla] Smart Charging"
+        message: "It is sunset and the car charger is currently on, so attempting to turn it off"
+    - service: switch.turn_off
+      target:
+        entity_id: switch.jess_charger
+
+
+#
+# Notification when car is plugged in
+#
+automation notification_on_plugged_in:
+  id: "8379465214876"
+  alias: "[Tesla Smart Charge] Ask user for smart charging when charge port connector connects"
+  description: ""
+  mode: single
+  trigger:
+    # When the car is plugged in
+    - platform: state
+      entity_id: binary_sensor.jess_charger
+      to: "on"
+      from: "off"
+  condition:
+    # Car must be at home
+    - condition: state
+      entity_id: device_tracker.jess_location_tracker
+      state: home
+    # The sun must be out
+    - condition: state
+      entity_id: sun.sun
+      state: above_horizon
+    # Smart charge must be disabled
+    - condition: state
+      entity_id: input_boolean.smart_charge
+      state: "off"
+  action:
+    - service: notify.notify
+      data:
+        message: Enable smart charging?
+        data:
+          actions:
+            - action: enable_smart_charging
+              title: Enable
+            - action: disable_smart_charging
+              title: Disable
+
+#
+# Notification actions
+#
+automation notification_actions:
+  id: "8379465214877"
+  alias: "[Tesla Smart Charge] Smart charging iOS actions"
+  description: ""
+  trigger:
+    - platform: event
+      event_type: ios.notification_action_fired
+      event_data:
+        actionName: enable_smart_charging
+    - platform: event
+      event_type: ios.notification_action_fired
+      event_data:
+        actionName: disable_smart_charging
+  action:
+    - choose:
+        - conditions:
+            - condition: template
+              value_template: "{{ trigger.event.data.actionName == 'enable_smart_charging' }}"
+          sequence:
+            - service: input_boolean.turn_on
+              target:
+                entity_id: input_boolean.smart_charge
+              data: {}
+        - conditions:
+            - condition: template
+              value_template: "{{ trigger.event.data.actionName == 'disable_smart_charging' }}"
+          sequence:
+            - service: input_boolean.turn_off
+              target:
+                entity_id: input_boolean.smart_charge
+              data: {}
+
+#
+# Notification when car isn't charging but we have lots of excess power
+#
+automation notification_solar_surplus:
+  id: "3846592348321"
+  alias: "[Tesla Smart Charge] iOS notify upon solar power production surplus"
+  description: ""
+  trigger:
+    - platform: numeric_state
+      entity_id: sensor.power_in_or_out_reversed
+      above: 750
+      for:
+        minutes: 5
+  condition:
+    # Smart charging is disabled
+    - condition: state
+      entity_id: input_boolean.smart_charge
+      state: "off"
+    # Car must be at home
+    - condition: state
+      entity_id: device_tracker.jess_location_tracker
+      state: home
+    - condition: sun
+      before: sunset
+      after: sunrise
+  action:
+    - service: notify.notify
+      data:
+        message: Excessive solar power production, enable smart charging?
+        data:
+          actions:
+            - action: enable_smart_charging
+              title: Enable

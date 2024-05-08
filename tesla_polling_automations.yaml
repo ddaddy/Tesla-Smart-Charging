@@ -1,0 +1,174 @@
+# https://github.com/alandtse/tesla/wiki/Dynamic-Polling-Frequency
+
+##########
+# On ha startup
+##########
+
+#
+# We adjust the polling interval down to 30 seconds to ensure we receive updates every minute on HA startup if the car is connected to a charger.
+# We add a delay to ensure that everything is settled before we try to adjust the interval.
+#
+- id: '1612867115444'
+  alias: Tesla set polling time short on startup if charger is connected
+  description: When HA starts up. We adjust the Polling Interval down from the configured value if we are connected to a charger
+  trigger:
+    - platform: homeassistant
+      event: start
+  condition:
+    - condition: state
+      entity_id: binary_sensor.jess_charger
+      state: "on"
+  action:
+    - delay: '00:01:00'
+    - service: tesla_custom.polling_interval
+      data:
+        vin: "{{ state_attr('binary_sensor.jess_online','vin') }}"
+        scan_interval: 30
+
+#
+# We also adjust the polling interval down to 30 seconds on HA startup if the car is driving.
+# We add a delay to ensure that everything is settled before we try to adjust the interval.
+#
+- id: '1612867115445'
+  alias: Tesla set polling time short on startup if car is driving
+  description: When HA starts up. We adjust the Polling Interval down from the configured value if we are driving
+  trigger:
+    - platform: homeassistant
+      event: start
+  condition:
+    - condition: state
+      entity_id: binary_sensor.jess_parking_brake
+      state: "off"
+  action:
+    - delay: '00:01:00'
+    - service: tesla_custom.polling_interval
+      data:
+        vin: "{{ state_attr('binary_sensor.jess_online','vin') }}"
+        scan_interval: 30
+
+##########
+# On charger connect/disconnect
+##########
+
+#
+# When the charger is connected, we adjust the Polling Interval down to ensure we don't miss any updates.
+#
+- id: '1612867285445'
+  alias: Tesla set polling time short when charger is connected
+  description: We adjust the Polling Interval down from the configured value if we are connecting to a charger
+  trigger:
+    - platform: state
+      entity_id: binary_sensor.jess_charger
+      to: "on"
+  action:
+    - service: tesla_custom.polling_interval
+      data:
+        vin: "{{ state_attr('binary_sensor.jess_online','vin') }}"
+        scan_interval: 30
+
+#
+# When the charger has been disconnected for some minutes, and we are not driving, we adjust the Polling Interval up to ensure the car is allowed to sleep.
+#
+- id: '1645927285445'
+  alias: Tesla set polling time long when charger is disconnected
+  description: We adjust the Polling Interval up to the configured value if we are disconnecting from the charger
+  trigger:
+    - platform: state
+      entity_id: binary_sensor.jess_charger
+      to: "off"
+      for: "00:15:00"
+  condition:
+    - condition: state
+      entity_id: binary_sensor.jess_parking_brake
+      state: "on"
+  action:
+    - service: tesla_custom.polling_interval
+      data:
+        vin: "{{ state_attr('binary_sensor.jess_online','vin') }}"
+        scan_interval: 660
+
+##########
+# Start driving or park the car
+##########
+
+#
+# When the car starts driving, we adjust the polling interval down
+#
+- id: '2563841346952'
+  alias: Tesla set polling time short when car is driving
+  description: We adjust the Polling Interval down from the configured value if we are driving
+  trigger:
+    - platform: state
+      entity_id: binary_sensor.jess_parking_brake
+      to: "off"
+  action:
+    - service: tesla_custom.polling_interval
+      data:
+        vin: "{{ state_attr('binary_sensor.jess_online','vin') }}"
+        scan_interval: 30
+
+#
+# After the car is parked for a while without a connected charger, we adjust the Polling Interval up to allow the car to sleep.
+#
+- id: '5823651837456'
+  alias: Tesla set polling time long when car is parked
+  description: We adjust the Polling Interval up to the configured value when we are parked if the charger is not connected
+  trigger:
+    - platform: state
+      entity_id: binary_sensor.jess_parking_brake
+      to: "on"
+      for: "00:15:00"
+  condition:
+    - condition: state
+      entity_id: binary_sensor.jess_charger
+      state: "off"
+  action:
+    - service: tesla_custom.polling_interval
+      data:
+        vin: "{{ state_attr('binary_sensor.jess_online','vin') }}"
+        scan_interval: 660
+
+
+##########
+# Sunset / Sunrise
+##########
+
+#
+# After sunset we adjust the polling interval up
+#
+- id: '1547236934587'
+  alias: Tesla set polling time long at night
+  description: We adjust the Polling Interval up to the configured value at night
+  trigger:
+    # Perform 30 minutes after sunset
+    - platform: sun
+      event: sunset
+      offset: "00:30:00"
+  action:
+    - service: tesla_custom.polling_interval
+      data:
+        vin: "{{ state_attr('binary_sensor.jess_online','vin') }}"
+        scan_interval: 660
+
+#
+# At sunrise we adjust the polling interval down
+#
+- id: '1547212234587'
+  alias: Tesla set polling time short at sunrise
+  description: We adjust the Polling Interval down at sunrise
+  trigger:
+    # Perform at sunrise
+    - platform: sun
+      event: sunrise
+  condition:
+    # Car must be plugged in
+    - condition: state
+      entity_id: binary_sensor.jess_charger
+      state: "on"
+  action:
+    - service: tesla_custom.polling_interval
+      data:
+        vin: "{{ state_attr('binary_sensor.jess_online','vin') }}"
+        scan_interval: 30
+
+
