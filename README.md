@@ -135,3 +135,7 @@ cards:
         name: Polling Interval
 
 ```
+
+## Attributions
+
+Inspired by [dikkertjedap](https://community.home-assistant.io/u/dikkertjedap) and his initial [post](https://community.home-assistant.io/t/diy-smart-grid-ev-tesla-charging-on-excess-solar-power-production/569852).
