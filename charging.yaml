@@ -273,8 +273,17 @@ automation charging:
       default:
         #
         # Do:
-        #   Log to Logbook
+        #   Disable the shut off timer (We could be in a state where we are charging at 1A, only have the 1A available, but the timer was previously triggered)
         #
+        - choose:
+          - conditions:
+              - condition: state
+                entity_id: timer.turn_off_car_charger
+                state: active
+            sequence:
+              - service: timer.cancel
+                target:
+                  entity_id: timer.turn_off_car_charger
         # - service: logbook.log
         #   data:
         #     name: "[Tesla Smart Charge]"
