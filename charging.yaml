@@ -1,3 +1,10 @@
+#
+# Don't allow the charging amps to go to zero
+#
+homeassistant:
+  customize:
+    number.jess_charging_amps:
+      min: 1
 
 #
 # [Switch] enable/disable smart charging
