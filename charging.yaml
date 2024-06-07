@@ -105,7 +105,7 @@ automation charging:
         minimum_start_amps: 2
         max_charging_amps: "{{ state_attr('number.jess_charging_amps', 'max') | int }}"
         current_charging_amps: "{{ states('number.jess_charging_amps') | int }}"
-        spare_energy: "{{ states('sensor.power_in_or_out_reversed') | float }}"
+        spare_energy: "{{ states('sensor.power_in_or_out_reversed') | float(0) }}"
         grid_voltage: "{{ 240 | float * 3 }}"
         spare_amps: "{{ (spare_energy / grid_voltage) | round(0, 'floor') | int }}"
         new_charge_amps: "{{ (current_charging_amps + spare_amps) | int }}"
