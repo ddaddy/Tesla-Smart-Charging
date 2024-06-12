@@ -92,7 +92,8 @@ automation charging:
     # Wait at least 10 seconds
     - condition: template
       value_template: >
-        {{ now() - this.attributes.last_triggered > timedelta(seconds=10) }}
+        {% set last = this.attributes.last_triggered %}
+        {{ last is none or now() > last + timedelta(seconds = 10) }}
     # Smart charge must be enabled
     - condition: state
       entity_id: input_boolean.smart_charge
