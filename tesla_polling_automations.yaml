@@ -23,7 +23,7 @@
     - service: tesla_custom.polling_interval
       data:
         vin: "{{ state_attr('binary_sensor.jess_online','vin') }}"
-        scan_interval: 30
+        scan_interval: 120
 
 #
 # We also adjust the polling interval down to 30 seconds on HA startup if the car is driving.
@@ -44,7 +44,7 @@
     - service: tesla_custom.polling_interval
       data:
         vin: "{{ state_attr('binary_sensor.jess_online','vin') }}"
-        scan_interval: 30
+        scan_interval: 120
 
 ##########
 # On charger connect/disconnect
@@ -64,7 +64,7 @@
     - service: tesla_custom.polling_interval
       data:
         vin: "{{ state_attr('binary_sensor.jess_online','vin') }}"
-        scan_interval: 30
+        scan_interval: 120
 
 #
 # When the charger has been disconnected for some minutes, and we are not driving, we adjust the Polling Interval up to ensure the car is allowed to sleep.
@@ -105,7 +105,7 @@
     - service: tesla_custom.polling_interval
       data:
         vin: "{{ state_attr('binary_sensor.jess_online','vin') }}"
-        scan_interval: 30
+        scan_interval: 120
 
 #
 # After the car is parked for a while without a connected charger, we adjust the Polling Interval up to allow the car to sleep.
@@ -169,6 +169,6 @@
     - service: tesla_custom.polling_interval
       data:
         vin: "{{ state_attr('binary_sensor.jess_online','vin') }}"
-        scan_interval: 30
+        scan_interval: 120
 
 
