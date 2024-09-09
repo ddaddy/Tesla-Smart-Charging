@@ -25,7 +25,7 @@ input_boolean:
 timer:
   turn_off_car_charger:
     name: "[Tesla Smart Charge] Timer to turn off car charger in 2 minutes"
-    duration: "00:02:02"
+    duration: "00:03:02"
     icon: mdi:timer-sand
 
 #
@@ -242,7 +242,7 @@ automation charging:
                     target:
                       entity_id: timer.turn_off_car_charger
                     data:
-                      duration: "00:02:02"
+                      duration: "00:03:02"
         - conditions:
             #
             # Condition: Car is charging and we are using too much energy
