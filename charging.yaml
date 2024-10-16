@@ -89,6 +89,10 @@ automation charging:
     - platform: state
       entity_id: sensor.power_in_or_out_reversed
   condition:
+    # The sun must be out
+    - condition: state
+      entity_id: sun.sun
+      state: above_horizon
     # Wait at least 10 seconds
     - condition: template
       value_template: >
