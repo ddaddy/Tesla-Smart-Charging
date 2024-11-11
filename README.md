@@ -64,6 +64,7 @@ The automation is triggered every time the power sensor updates.
 ### Automations
 |Condition|Action|
 |:---|:---|
+|Car is not charging.<br/>Number of spare `Amps` is above `minimum_start_amps`.<br/>Battery level is below the Charge level.<br />Car is asleep.|Send the Wake Up command to the car.<br />_(The automation will run again after 10 seconds, at which point the car should be ready to accept charging commamds.)_|
 |Car is not charging.<br/>Number of spare `Amps` is above `minimum_start_amps`.<br/>Battery level is below the Charge level.|Cancel any timer that is going to turn the charger off.<br/>Set the charging amps to the number of amps available.<br/>Tell the car to start charging.|
 |Car is currently charging.<br/>There are spare `Amps` available.<br/>The current charge rate is lower than the `max_charging_amps`.|Cancel any timer that is going to turn the charger off.<br/>Adjust the charge rate up.|
 |Car is currently charging.<br/>There is not enough energy to charge at `min_charging_amps`.|Reduce the charge rate to `min_charging_amps`.<br/>Start the timer to turn the charger off in 2 minutes if it isn't already running.|

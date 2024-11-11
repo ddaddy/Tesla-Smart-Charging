@@ -125,6 +125,35 @@ automation charging:
         battery_level: "{{ states('sensor.jess_battery') | int }}"
     - choose:
         - conditions:
+            #
+            # Condition: Car is not currently charging and we have enough spare amps
+            #            Car is also under the max charge level
+            #            Car is asleep
+            #
+            - condition: template
+              value_template: "{{ spare_amps >= minimum_start_amps }}"
+            - condition: state
+              entity_id: switch.jess_charger
+              state: 'off'
+            - condition: template
+              value_template: "{{ charge_limit > battery_level }}"
+            - condition: state
+              entity_id: binary_sensor.jess_asleep
+              state: "on"
+          sequence:
+            #
+            # Do:
+            #   Log to Logbook
+            #   Send Wake Up command to car
+            #
+            - service: logbook.log
+              data:
+                name: "[Tesla Smart Charge]"
+                message: "Car is asleep, attempting to wake."
+            - service: button.press
+              target:
+                entity_id: button.jess_wake_up
+        - conditions:
             # 
             # Condition: Car is not currently charging and we have enough spare amps
             #            Car is also under the max charge level
