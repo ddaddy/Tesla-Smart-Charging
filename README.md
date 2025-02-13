@@ -56,7 +56,7 @@ The automation is triggered every time the power sensor updates.
 
 |Condition|Reason|
 |:---|:---|
-|10 seconds has elapsed|Rapid changes can cause weird things to happen because it takes time for the car to react to changes.|
+|10 seconds has elapsed (Customisable using `smart_charge_delay`)|Rapid changes can cause weird things to happen because it takes time for the car to react to changes.|
 |`input_boolean.smart_charge: on`|If you have disabled `Smart Charging` we don't want to interfere.|
 |Car is plugged in|There's no point automating anything if the car is not plugged in.|
 |Car is at home|You don't want automation turning your charger off when at a Supercharger!|

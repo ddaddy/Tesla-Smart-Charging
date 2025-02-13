@@ -11,9 +11,23 @@ homeassistant:
 #
 input_boolean:
   smart_charge:
-    name: "[Tesla] Smart Charge"
+    name: "[Tesla Smart Charge] Smart Charge"
     initial: on
     icon: mdi:battery-charging-60
+
+#
+# [Number] The amount of time to wait between triggers
+#
+input_number:
+  smart_charge_delay:
+    name: "[Tesla Smart Charge] Smart Charge Delay"
+    unit_of_measurement: s
+    initial: 30
+    min: 10
+    max: 600
+    step: 1
+    icon: mdi:car-clock
+    mode: box
 
 #
 # [Timer] Delay stopping charge
@@ -93,11 +107,12 @@ automation charging:
     - condition: state
       entity_id: sun.sun
       state: above_horizon
-    # Wait at least 10 seconds
+    # Wait at least smart_charge_delay(10) seconds
     - condition: template
       value_template: >
         {% set last = this.attributes.last_triggered %}
-        {{ last is none or now() > last + timedelta(seconds = 10) }}
+        {% set delay = states('input_number.smart_charge_delay') | int(10) %}
+        {{ last is none or now() > last + timedelta(seconds = delay) }}
     # Smart charge must be enabled
     - condition: state
       entity_id: input_boolean.smart_charge
