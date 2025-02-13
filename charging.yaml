@@ -30,6 +30,18 @@ input_number:
     mode: box
 
 #
+# [Number] The amount of overrun allowed before disabling charge
+#
+  smart_charge_buffer:
+    name: "[Tesla Smart Charge] Charge Overrun Buffer"
+    icon: mdi:battery-charging-60
+    unit_of_measurement: w
+    min: 0
+    max: 500
+    step: 50
+    initial: 100
+
+#
 # [Timer] Delay stopping charge
 #
 # When an automation calls to turn the charger off, we delay it by 2 minutes.
@@ -38,7 +50,7 @@ input_number:
 #
 timer:
   turn_off_car_charger:
-    name: "[Tesla Smart Charge] Timer to turn off car charger in 2 minutes"
+    name: "[Tesla Smart Charge] Timer to turn off car charger in 3 minutes"
     duration: "00:03:02"
     icon: mdi:timer-sand
 
@@ -138,6 +150,7 @@ automation charging:
         new_charge_amps: "{{ (current_charging_amps + spare_amps) | int }}"
         charge_limit: "{{ states('number.jess_charge_limit') | int }}"
         battery_level: "{{ states('sensor.jess_battery') | int }}"
+        overrun_buffer: "{{ states('input_number.smart_charge_buffer') | float(0) * -1 }}"
     - choose:
         - conditions:
             #
@@ -254,13 +267,19 @@ automation charging:
                 value: "{{ [max_charging_amps, new_charge_amps] | min }}"
         - conditions:
             #
-            # Condition: Car is charging and we don't even have enough juice to charge even at min_charging_amps
+            #                     TURN OFF?
             #
-            - condition: state
+            # Condition: Car is charging and we don't even have enough juice to charge even at min_charging_amps
+            #            We also make sure that we are above our overrun_buffer
+            #
+            - alias: Charger is on
+              condition: state
               entity_id: switch.jess_charger
               state: 'on'
-            - condition: template
+            - alias: new_charge_amps < min_charging_amps
+              condition: template
               value_template: "{{ new_charge_amps < min_charging_amps }}"
+              
           alias: Charging and need to stop!
           sequence:
             #
@@ -274,7 +293,8 @@ automation charging:
                 name: "[Tesla Smart Charge]"
                 message: "Charger is on and we don't have enough juice to even charge at {{ min_charging_amps }}A. Turning off charger in 2 minutes. (new_charge:{{ new_charge_amps }}A < min_charging:{{ min_charging_amps }}A) (current_charging:{{ current_charging_amps }}A + spare:{{ spare_amps }}A) (power out:{{ spare_energy }})"
             # Only set charge rate if we need to
-            - if:
+            - alias: Set minimum charge rate if not already
+              if:
                 - condition: template
                   value_template: "{{ current_charging_amps != min_charging_amps }}"
               then:
@@ -283,23 +303,47 @@ automation charging:
                     entity_id: number.jess_charging_amps
                   data:
                     value: "{{ min_charging_amps }}"
-            # Check that the timer isn't already running, otherwise it will restart
-            - choose:
-              - conditions:
-                  - condition: or
+
+
+            - alias: Start or Cancel the timer that switches off the charger
+              if:
+                - alias: If spare_energy < overrun_buffer
+                  condition: template
+                  value_template: "{{ spare_energy < overrun_buffer }}"
+              then:
+                # Check that the timer isn't already running, otherwise it will restart
+                - alias: Start the timer
+                  choose:
+                  - alias: Make sure the stop timer isn't already running
+                    conditions:
+                      - condition: or
+                        conditions:
+                          - condition: state
+                            entity_id: timer.turn_off_car_charger
+                            state: idle
+                          - condition: state
+                            entity_id: timer.turn_off_car_charger
+                            state: paused
+                    sequence:
+                      - service: timer.start
+                        target:
+                          entity_id: timer.turn_off_car_charger
+                        data:
+                          duration: "00:03:02"
+              else:
+                # Disable time if running
+                - alias: Stop the timer
+                  choose:
+                  - alias: Check if the timer is running
                     conditions:
                       - condition: state
                         entity_id: timer.turn_off_car_charger
-                        state: idle
-                      - condition: state
-                        entity_id: timer.turn_off_car_charger
-                        state: paused
-                sequence:
-                  - service: timer.start
-                    target:
-                      entity_id: timer.turn_off_car_charger
-                    data:
-                      duration: "00:03:02"
+                        state: active
+                    sequence:
+                      - service: timer.cancel
+                        target:
+                          entity_id: timer.turn_off_car_charger
+
         - conditions:
             #
             # Condition: Car is charging and we are using too much energy
@@ -346,7 +390,7 @@ automation charging:
               - condition: state
                 entity_id: timer.turn_off_car_charger
                 state: active
-            alias: Cancel time that disables charger
+            alias: Cancel timer that disables charger
             sequence:
               - service: timer.cancel
                 target:
