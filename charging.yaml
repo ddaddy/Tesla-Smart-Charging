@@ -266,18 +266,23 @@ automation charging:
             #
             # Do:
             #   Log to Logbook
-            #   Reduce amps to 1
+            #   Reduce amps to min_charging_amps if not already at min_charging_amps
             #   Run timer that delays for 3 minutes then turns off the charger, but only if it isn't already running
             #
             - service: logbook.log
               data:
                 name: "[Tesla Smart Charge]"
                 message: "Charger is on and we don't have enough juice to even charge at {{ min_charging_amps }}A. Turning off charger in 2 minutes. (new_charge:{{ new_charge_amps }}A < min_charging:{{ min_charging_amps }}A) (current_charging:{{ current_charging_amps }}A + spare:{{ spare_amps }}A) (power out:{{ spare_energy }})"
-            - service: number.set_value
-              target:
-                entity_id: number.jess_charging_amps
-              data:
-                value: "{{ min_charging_amps }}"
+            # Only set charge rate if we need to
+            - if:
+                - condition: template
+                  value_template: "{{ current_charging_amps != min_charging_amps }}"
+              then:
+                - service: number.set_value
+                  target:
+                    entity_id: number.jess_charging_amps
+                  data:
+                    value: "{{ min_charging_amps }}"
             # Check that the timer isn't already running, otherwise it will restart
             - choose:
               - conditions:
